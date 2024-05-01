@@ -30,7 +30,6 @@ class Turbo1:
     f : function handle
     lb : Lower variable bounds, numpy.array, shape (d,).
     ub : Upper variable bounds, numpy.array, shape (d,).
-    n_init : Number of initial points (2*dim is recommended), int.
     max_evals : Total evaluation budget, int.
     batch_size : Number of points in each batch, int.
     verbose : If you want to print information about the optimization progress, bool.
@@ -42,7 +41,7 @@ class Turbo1:
     dtype : Dtype to use for GP fitting ("float32" or "float64")
 
     Example usage:
-        turbo1 = Turbo1(f=f, lb=lb, ub=ub, n_init=n_init, max_evals=max_evals)
+        turbo1 = Turbo1(f=f, lb=lb, ub=ub, max_evals=max_evals)
         turbo1.optimize()  # Run optimization
         X, fX = turbo1.X, turbo1.fX  # Evaluated points
     """
@@ -52,7 +51,6 @@ class Turbo1:
         f,
         lb,
         ub,
-        n_init,
         max_evals,
         batch_size=1,
         verbose=True,
@@ -69,12 +67,11 @@ class Turbo1:
         assert len(lb) == len(ub)
         assert np.all(ub > lb)
         assert max_evals > 0 and isinstance(max_evals, int)
-        assert n_init > 0 and isinstance(n_init, int)
         assert batch_size > 0 and isinstance(batch_size, int)
         assert isinstance(verbose, bool) and isinstance(use_ard, bool)
         assert max_cholesky_size >= 0 and isinstance(batch_size, int)
         assert n_training_steps >= 30 and isinstance(n_training_steps, int)
-        assert max_evals > n_init and max_evals > batch_size
+        assert max_evals > batch_size
         assert device == "cpu" or device == "cuda"
         assert dtype == "float32" or dtype == "float64"
         if device == "cuda":
@@ -87,7 +84,6 @@ class Turbo1:
         self.ub = ub
 
         # Settings
-        self.n_init = n_init
         self.max_evals = max_evals
         self.batch_size = batch_size
         self.verbose = verbose
@@ -233,8 +229,13 @@ class Turbo1:
             y_cand[indbest, :] = np.inf
         return X_next
 
-    def optimize(self):
+    def optimize(self, X_init):
         """Run the full optimization process."""
+        assert isinstance(X_init, np.ndarray)
+        assert X_init.ndim == 2
+        assert X_init.shape[1] == self.dim
+        n_init = X_init.shape[0]
+
         while self.n_evals < self.max_evals:
             if len(self._fX) > 0 and self.verbose:
                 n_evals, fbest = self.n_evals, self._fX.min()
@@ -245,12 +246,10 @@ class Turbo1:
             self._restart()
 
             # Generate and evalute initial design points
-            X_init = latin_hypercube(self.n_init, self.dim)
-            X_init = from_unit_cube(X_init, self.lb, self.ub)
             fX_init = np.array([[self.f(x)] for x in X_init])
 
             # Update budget and set as initial data for this TR
-            self.n_evals += self.n_init
+            self.n_evals += n_init
             self._X = deepcopy(X_init)
             self._fX = deepcopy(fX_init)
 

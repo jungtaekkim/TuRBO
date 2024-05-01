@@ -30,7 +30,6 @@ class TurboM(Turbo1):
     f : function handle
     lb : Lower variable bounds, numpy.array, shape (d,).
     ub : Upper variable bounds, numpy.array, shape (d,).
-    n_init : Number of initial points *FOR EACH TRUST REGION* (2*dim is recommended), int.
     max_evals : Total evaluation budget, int.
     n_trust_regions : Number of trust regions
     batch_size : Number of points in each batch, int.
@@ -43,7 +42,7 @@ class TurboM(Turbo1):
     dtype : Dtype to use for GP fitting ("float32" or "float64")
 
     Example usage:
-        turbo5 = TurboM(f=f, lb=lb, ub=ub, n_init=n_init, max_evals=max_evals, n_trust_regions=5)
+        turbo5 = TurboM(f=f, lb=lb, ub=ub, max_evals=max_evals, n_trust_regions=5)
         turbo5.optimize()  # Run optimization
         X, fX = turbo5.X, turbo5.fX  # Evaluated points
     """
@@ -53,7 +52,6 @@ class TurboM(Turbo1):
         f,
         lb,
         ub,
-        n_init,
         max_evals,
         n_trust_regions,
         batch_size=1,
@@ -70,7 +68,6 @@ class TurboM(Turbo1):
             f=f,
             lb=lb,
             ub=ub,
-            n_init=n_init,
             max_evals=max_evals,
             batch_size=batch_size,
             verbose=verbose,
@@ -87,7 +84,6 @@ class TurboM(Turbo1):
 
         # Very basic input checks
         assert n_trust_regions > 1 and isinstance(max_evals, int)
-        assert max_evals > n_trust_regions * n_init, "Not enough trust regions to do initial evaluations"
         assert max_evals > batch_size, "Not enough evaluations to do a single batch"
 
         # Remember the hypers for trust regions we don't sample from
@@ -140,19 +136,22 @@ class TurboM(Turbo1):
 
         return X_next, idx_next
 
-    def optimize(self):
+    def optimize(self, X_init):
         """Run the full optimization process."""
+        assert isinstance(X_init, np.ndarray)
+        assert X_init.ndim == 2
+        assert X_init.shape[1] == self.dim
+        n_init = X_init.shape[0]
+
         # Create initial points for each TR
         for i in range(self.n_trust_regions):
-            X_init = latin_hypercube(self.n_init, self.dim)
-            X_init = from_unit_cube(X_init, self.lb, self.ub)
             fX_init = np.array([[self.f(x)] for x in X_init])
 
             # Update budget and set as initial data for this TR
             self.X = np.vstack((self.X, X_init))
             self.fX = np.vstack((self.fX, fX_init))
-            self._idx = np.vstack((self._idx, i * np.ones((self.n_init, 1), dtype=int)))
-            self.n_evals += self.n_init
+            self._idx = np.vstack((self._idx, i * np.ones((n_init, 1), dtype=int)))
+            self.n_evals += n_init
 
             if self.verbose:
                 fbest = fX_init.min()
@@ -230,7 +229,7 @@ class TurboM(Turbo1):
                     self.hypers[i] = {}  # Remove model hypers
 
                     # Create a new initial design
-                    X_init = latin_hypercube(self.n_init, self.dim)
+                    X_init = latin_hypercube(n_init, self.dim)
                     X_init = from_unit_cube(X_init, self.lb, self.ub)
                     fX_init = np.array([[self.f(x)] for x in X_init])
 
@@ -243,5 +242,5 @@ class TurboM(Turbo1):
                     # Append data to local history
                     self.X = np.vstack((self.X, X_init))
                     self.fX = np.vstack((self.fX, fX_init))
-                    self._idx = np.vstack((self._idx, i * np.ones((self.n_init, 1), dtype=int)))
-                    self.n_evals += self.n_init
+                    self._idx = np.vstack((self._idx, i * np.ones((n_init, 1), dtype=int)))
+                    self.n_evals += n_init

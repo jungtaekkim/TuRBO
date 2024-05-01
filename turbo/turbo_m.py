@@ -145,6 +145,9 @@ class TurboM(Turbo1):
 
         # Create initial points for each TR
         for i in range(self.n_trust_regions):
+            if i > 1:
+                X_init = latin_hypercube(n_init, self.dim)
+                X_init = from_unit_cube(X_init, self.lb, self.ub)
             fX_init = np.array([[self.f(x)] for x in X_init])
 
             # Update budget and set as initial data for this TR
